@@ -1,4 +1,4 @@
-module grizzly
+module Grizzly
 
 go 1.21
 

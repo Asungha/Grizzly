@@ -1,9 +1,7 @@
-package controller
+package Grizzly
 
 import (
 	"context"
-
-	. "grizzly/utils"
 
 	"github.com/bufbuild/protovalidate-go"
 	"google.golang.org/protobuf/reflect/protoreflect"

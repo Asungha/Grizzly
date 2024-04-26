@@ -1,7 +1,6 @@
-package controller
+package Grizzly
 
 import (
-	. "grizzly/utils"
 	"io"
 
 	"github.com/bufbuild/protovalidate-go"

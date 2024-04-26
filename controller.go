@@ -1,8 +1,4 @@
-package controller
-
-import (
-	. "grizzly/utils"
-)
+package Grizzly
 
 var USE_INPUT_VALIDATION = GetEnv("USE_INPUT_VALIDATION", Optional("true")).Bool.Get()
 var USE_OUTPUT_VALIDATION = GetEnv("USE_OUTPUT_VALIDATION", Optional("true")).Bool.Get()

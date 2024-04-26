@@ -1,4 +1,4 @@
-package context
+package Grizzly
 
 type IContext interface {
 	IContextimpl()

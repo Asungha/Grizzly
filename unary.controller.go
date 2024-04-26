@@ -53,6 +53,10 @@ func (b *UnaryBuilder[Req, Res]) BeforeReturnError(f UnaryErrorInterceptorFuncti
 	return b
 }
 
+func (b *UnaryBuilder[Req, Res]) Build() UnaryFunctions[Req, Res] {
+	return b.res
+}
+
 func UnaryServer[T protoreflect.ProtoMessage, V protoreflect.ProtoMessage](ctx context.Context, data T, functions UnaryFunctions[T, V], option *FunctionOptions) (V, error) {
 	var placeholder V
 	if option == nil {

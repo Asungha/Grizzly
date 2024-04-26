@@ -1,4 +1,4 @@
-module Grizzly
+module github.com/Asungha/Grizzly
 
 go 1.21
 

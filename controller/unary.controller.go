@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"log"
 
 	utils "github.com/Asungha/Grizzly/utils"
 	"github.com/bufbuild/protovalidate-go"
@@ -96,7 +95,6 @@ func UnaryServer[T protoreflect.ProtoMessage, V protoreflect.ProtoMessage](ctx c
 			}
 		}
 		if option.outputValidation {
-			log.Printf("Validating output: %v", res)
 			if err := validator.Validate(res); err != nil {
 				remainError := functions.HandleError(ctx, data, err)
 				if remainError != nil {

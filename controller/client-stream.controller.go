@@ -1,11 +1,14 @@
-package Grizzly
+package controller
 
 import (
 	"io"
+	"log"
 
 	"github.com/bufbuild/protovalidate-go"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/reflect/protoreflect"
+
+	utils "github.com/Asungha/Grizzly/utils"
 )
 
 type ClientStreamFunction[V protoreflect.ProtoMessage] func(V) error
@@ -63,13 +66,86 @@ func (b *ClientStreamBuilder[Req, Res]) Build() ClientStreamFunctions[Req, Res] 
 func (f *ClientStreamFunctions[Req, Res]) HandleError(data Req, err error) error {
 	if err != nil {
 		if f.ErrorInterceptor != nil {
+			log.Println("Error interceptor called")
 			data, err = f.ErrorInterceptor(data, err)
 		}
 		if f.ErrorHandler != nil {
+			log.Println("Error handler called")
 			return f.ErrorHandler(data, err)
 		}
 	}
 	return nil
+}
+
+func handle[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage](
+	stream ClientStream[Req, Res],
+	functions ClientStreamFunctions[Req, Res],
+	option *FunctionOptions,
+) (*Res, error) {
+	var chunkCount int32 = 0
+	validator, err := protovalidate.New()
+	if err != nil {
+		return nil, utils.InternalError(err)
+	}
+	var lastChunk Req
+	if option == nil {
+		option = FunctionOptionsBuilder().InputValidation(USE_INPUT_VALIDATION).OutputValidation(USE_OUTPUT_VALIDATION)
+	}
+	for {
+		buffer, err := stream.Recv()
+
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				remainError := functions.HandleError(buffer, err)
+				if remainError == nil {
+					return nil, utils.ServiceError(err)
+				} else {
+					return nil, remainError
+				}
+			}
+		}
+
+		lastChunk = buffer
+		chunkCount++
+
+		if option.inputValidation {
+			if err := validator.Validate(buffer); err != nil {
+				remainError := functions.HandleError(buffer, err)
+				if remainError != nil {
+					return nil, utils.DataLossError(err)
+				} else {
+					return nil, remainError
+				}
+			}
+		}
+		err = functions.IngressHandler(buffer)
+		if err != nil {
+			remainError := functions.HandleError(buffer, err)
+			if remainError != nil {
+				return nil, utils.ServiceError(err)
+			} else {
+				return nil, remainError
+			}
+		}
+	}
+
+	var res Res
+
+	if functions.StreamEndHandler != nil {
+		postProcessRes, err := functions.StreamEndHandler(lastChunk, int(chunkCount))
+		if err != nil {
+			remainError := functions.HandleError(lastChunk, err)
+			if remainError != nil {
+				return nil, utils.ServiceError(err)
+			} else {
+				return nil, remainError
+			}
+		}
+		res = postProcessRes
+	}
+	return &res, nil
 }
 
 /*
@@ -85,69 +161,12 @@ func ClientStreamServer[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 	functions ClientStreamFunctions[Req, Res],
 	option *FunctionOptions,
 ) error {
-	var chunkCount int32 = 0
-	validator, err := protovalidate.New()
+	res, err := handle(stream, functions, option)
 	if err != nil {
-		return InternalError(err)
+		return err
 	}
-	var lastChunk Req
-	if option == nil {
-		option = FunctionOptionsBuilder().InputValidation(USE_INPUT_VALIDATION).OutputValidation(USE_OUTPUT_VALIDATION)
+	if err := stream.SendAndClose(*res); err != nil {
+		return utils.ServiceError(err)
 	}
-	for {
-		buffer, err := stream.Recv()
-
-		if err != nil {
-			if err == io.EOF {
-				break
-			} else {
-				remainError := functions.HandleError(buffer, err)
-				if remainError != nil {
-					return ServiceError(err)
-				} else {
-					return remainError
-				}
-			}
-		}
-
-		lastChunk = buffer
-		chunkCount++
-
-		if option.inputValidation {
-			if err := validator.Validate(buffer); err != nil {
-				remainError := functions.HandleError(buffer, err)
-				if remainError != nil {
-					return DataLossError(err)
-				} else {
-					return remainError
-				}
-			}
-		}
-		err = functions.IngressHandler(buffer)
-		if err != nil {
-			remainError := functions.HandleError(buffer, err)
-			if remainError != nil {
-				return ServiceError(err)
-			} else {
-				return remainError
-			}
-		}
-	}
-
-	var res Res
-
-	if functions.StreamEndHandler != nil {
-		postProcessRes, err := functions.StreamEndHandler(lastChunk, int(chunkCount))
-		if err != nil {
-			remainError := functions.HandleError(lastChunk, err)
-			if remainError != nil {
-				return ServiceError(err)
-			} else {
-				return remainError
-			}
-		}
-		res = postProcessRes
-	}
-	stream.SendAndClose(res)
 	return nil
 }

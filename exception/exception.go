@@ -1,4 +1,4 @@
-package Grizzly
+package exception
 
 type IException interface {
 	Error() string

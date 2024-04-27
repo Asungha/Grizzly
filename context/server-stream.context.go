@@ -1,4 +1,4 @@
-package Grizzly
+package context
 
 import (
 	"google.golang.org/grpc"

@@ -1,8 +1,9 @@
-package Grizzly
+package controller
 
 import (
 	"context"
 
+	utils "github.com/Asungha/Grizzly/utils"
 	"github.com/bufbuild/protovalidate-go"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
@@ -67,7 +68,7 @@ func UnaryServer[T protoreflect.ProtoMessage, V protoreflect.ProtoMessage](ctx c
 		if err != nil {
 			remainError := functions.HandleError(ctx, data, err)
 			if remainError != nil {
-				return placeholder, ServiceError(err)
+				return placeholder, utils.ServiceError(err)
 			} else {
 				return placeholder, remainError
 			}
@@ -77,7 +78,7 @@ func UnaryServer[T protoreflect.ProtoMessage, V protoreflect.ProtoMessage](ctx c
 			if err := validator.Validate(data); err != nil {
 				remainError := functions.HandleError(ctx, data, err)
 				if remainError != nil {
-					return placeholder, InvalidArgumentError(err)
+					return placeholder, utils.InvalidArgumentError(err)
 				} else {
 					return placeholder, remainError
 				}
@@ -88,7 +89,7 @@ func UnaryServer[T protoreflect.ProtoMessage, V protoreflect.ProtoMessage](ctx c
 		if err != nil {
 			remainError := functions.HandleError(ctx, data, err)
 			if remainError != nil {
-				return placeholder, ServiceError(err)
+				return placeholder, utils.ServiceError(err)
 			} else {
 				return placeholder, remainError
 			}
@@ -97,7 +98,7 @@ func UnaryServer[T protoreflect.ProtoMessage, V protoreflect.ProtoMessage](ctx c
 			if err := validator.Validate(res); err != nil {
 				remainError := functions.HandleError(ctx, data, err)
 				if remainError != nil {
-					return placeholder, DataLossError(err)
+					return placeholder, utils.DataLossError(err)
 				} else {
 					return placeholder, remainError
 				}

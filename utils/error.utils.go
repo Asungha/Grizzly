@@ -1,4 +1,4 @@
-package Grizzly
+package utils
 
 import (
 	"google.golang.org/grpc/codes"

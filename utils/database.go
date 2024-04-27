@@ -1,3 +1,3 @@
-package Grizzly
+package utils
 
 type IDatabase interface{}

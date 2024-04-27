@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"io"
 	"log"
 
@@ -9,6 +10,8 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	utils "github.com/Asungha/Grizzly/utils"
+
+	eventbus "github.com/Asungha/Grizzly/eventbus"
 )
 
 type ClientStreamFunction[V protoreflect.ProtoMessage] func(V) error
@@ -29,6 +32,8 @@ type ClientStreamFunctions[Req protoreflect.ProtoMessage, Res protoreflect.Proto
 	StreamEndHandler ClientStreamPostFunction[Req, Res]
 	ErrorHandler     ClientStreamErrorFunction[Req]
 	ErrorInterceptor ClientStreamErrorInterceptorFunction[Req]
+
+	config eventbus.EventBusConfig
 }
 
 type ClientStreamBuilder[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage] struct {
@@ -80,6 +85,7 @@ func (f *ClientStreamFunctions[Req, Res]) HandleError(data Req, err error) error
 func handle[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage](
 	stream ClientStream[Req, Res],
 	functions ClientStreamFunctions[Req, Res],
+	eventbus *eventbus.IEventBus[Req, Res],
 	option *FunctionOptions,
 ) (*Res, error) {
 	var chunkCount int32 = 0
@@ -120,6 +126,10 @@ func handle[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage](
 				}
 			}
 		}
+		err = (*eventbus).PublishRequestPipe(buffer)
+		if err != nil {
+			log.Println("Error publishing request pipe", err)
+		}
 		err = functions.IngressHandler(buffer)
 		if err != nil {
 			remainError := functions.HandleError(buffer, err)
@@ -144,6 +154,12 @@ func handle[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage](
 			}
 		}
 		res = postProcessRes
+		err = (*eventbus).PublishResponsePipe(res)
+		if err != nil {
+			log.Println("Error publishing request pipe", err)
+		}
+	} else {
+		return nil, utils.InternalError(errors.New("no stream end handler"))
 	}
 	return &res, nil
 }
@@ -159,9 +175,10 @@ Wrapper for stream functions
 func ClientStreamServer[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage](
 	stream ClientStream[Req, Res],
 	functions ClientStreamFunctions[Req, Res],
+	eventbus *eventbus.IEventBus[Req, Res],
 	option *FunctionOptions,
 ) error {
-	res, err := handle(stream, functions, option)
+	res, err := handle(stream, functions, eventbus, option)
 	if err != nil {
 		return err
 	}

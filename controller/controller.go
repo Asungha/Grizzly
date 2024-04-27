@@ -37,13 +37,13 @@ func (c *Controller[
 ]) ImpCotroller() {
 }
 
-func (c *Controller[Req, Res]) SubscribeRequestPipe(key string) eventbus.IPipe[Req] {
-	if c.RequestPipe[key] != nil {
-		return c.RequestPipe[key]
-	}
-	c.RequestPipe[key] = eventbus.
-	return c.RequestPipe[key]
-}
+// func (c *Controller[Req, Res]) SubscribeRequestPipe(key string) eventbus.IPipe[Req] {
+// 	if c.RequestPipe[key] != nil {
+// 		return c.RequestPipe[key]
+// 	}
+// 	c.RequestPipe[key] = eventbus.
+// 	return c.RequestPipe[key]
+// }
 
 type FunctionOptions struct {
 	inputValidation  bool

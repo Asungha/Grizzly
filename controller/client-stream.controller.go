@@ -3,7 +3,6 @@ package controller
 import (
 	"errors"
 	"io"
-	"log"
 
 	"github.com/bufbuild/protovalidate-go"
 	"google.golang.org/grpc"
@@ -71,11 +70,9 @@ func (b *ClientStreamBuilder[Req, Res]) Build() ClientStreamFunctions[Req, Res] 
 func (f *ClientStreamFunctions[Req, Res]) HandleError(data Req, err error) error {
 	if err != nil {
 		if f.ErrorInterceptor != nil {
-			log.Println("Error interceptor called")
 			data, err = f.ErrorInterceptor(data, err)
 		}
 		if f.ErrorHandler != nil {
-			log.Println("Error handler called")
 			return f.ErrorHandler(data, err)
 		}
 	}
@@ -126,10 +123,7 @@ func handle[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage](
 				}
 			}
 		}
-		err = (*eventbus).PublishRequestPipe(buffer)
-		if err != nil {
-			log.Println("Error publishing request pipe", err)
-		}
+		(*eventbus).PublishRequestPipe(buffer)
 		err = functions.IngressHandler(buffer)
 		if err != nil {
 			remainError := functions.HandleError(buffer, err)
@@ -154,10 +148,7 @@ func handle[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage](
 			}
 		}
 		res = postProcessRes
-		err = (*eventbus).PublishResponsePipe(res)
-		if err != nil {
-			log.Println("Error publishing request pipe", err)
-		}
+		(*eventbus).PublishResponsePipe(res)
 	} else {
 		return nil, utils.InternalError(errors.New("no stream end handler"))
 	}

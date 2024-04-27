@@ -1,8 +1,6 @@
 package eventbus
 
 import (
-	"log"
-
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"errors"
@@ -51,7 +49,6 @@ func (c *EventBus[Req, Res]) ListenRequestPipe(client string, f func(Req) error)
 	for {
 		select {
 		case event := <-channel:
-			log.Printf("Received req event: %v", event)
 			err := f(event)
 			if err != nil {
 				return err
@@ -68,7 +65,6 @@ func (c *EventBus[Req, Res]) ListenResponsePipe(client string, f func(Res) error
 	for {
 		select {
 		case event := <-channel:
-			log.Printf("Received res event: %v", event)
 			err := f(event)
 			if err != nil {
 				return err
@@ -78,13 +74,10 @@ func (c *EventBus[Req, Res]) ListenResponsePipe(client string, f func(Res) error
 }
 
 func (c *EventBus[Req, Res]) PublishRequestPipe(event Req) error {
-	log.Printf("Current request pipe: %v", c.RequestPipe)
 	if !c.config.AllowRequestPipeSubscription && c.RequestPipe != nil {
-		log.Printf("Request pipe publishing is not allowed")
 		return errors.New("request pipe publishing is not allowed")
 	}
 	err := c.RequestPipe.Publish(event)
-	log.Printf("Published event: %v %v", event, err)
 	return err
 }
 
@@ -93,7 +86,6 @@ func (c *EventBus[Req, Res]) PublishResponsePipe(event Res) error {
 		return errors.New("response pipe publishing is not allowed")
 	}
 	err := c.ResponsePipe.Publish(event)
-	log.Printf("Published event: %v %v", event, err)
 	return err
 }
 

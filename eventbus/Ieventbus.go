@@ -22,4 +22,6 @@ type IEventBus[
 
 	UnsubscribeRequestPipe(client string)
 	UnsubscribeResponsePipe(client string)
+
+	Destroy()
 }

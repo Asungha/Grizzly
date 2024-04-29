@@ -1,6 +1,8 @@
 package eventbus
 
 import (
+	"context"
+	"fmt"
 	"log"
 
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -23,14 +25,17 @@ type EventBus[
 	config EventBusConfig
 }
 
-func (c *EventBus[Req, Res]) ImplCotroller() {}
+func (c *EventBus[Req, Res]) ImplEventbus() {}
 
 func (c *EventBus[Req, Res]) Init(config EventBusConfig) {
+	log.Printf("config %v", config)
 	c.config = config
-	if config.AllowRequestPipeSubscription {
+	if config.AllowRequestPipeSubscription == true {
+		log.Printf("allowing request pipe subscription")
 		c.RequestPipe = NewInternalPipe[Req]()
 	}
-	if config.AllowResponsePipeSubscription {
+	if config.AllowResponsePipeSubscription == true {
+		log.Printf("allowing response pipe subscription")
 		c.ResponsePipe = NewInternalPipe[Res]()
 	}
 }
@@ -43,42 +48,60 @@ func (c *EventBus[Req, Res]) SubscribeResponsePipe(client string) {
 	c.ResponsePipe.Subscribe(client)
 }
 
-func (c *EventBus[Req, Res]) ListenRequestPipe(client string, f func(Req) error) error {
+func (c *EventBus[Req, Res]) ListenRequestPipe(ctx context.Context, client string, f func(Req) error) error {
 	if c.RequestPipe == nil {
 		return errors.New("no request pipe available")
 	}
 	channel := c.RequestPipe.Subscribe(client)
 	for {
 		select {
-		case event := <-channel:
-			// check if event is nil
-			if !event.ProtoReflect().IsValid() {
-				return errors.New("event is nil")
+		case event := <-channel: // might cause crash
+			if fmt.Sprintf("%v", event) == "<nil>" {
+				log.Printf("nil event in request pipe")
+				return errors.New("nil event in response pipe")
 			}
 			err := f(event)
 			if err != nil {
 				log.Printf("error in request pipe: %v", err)
 				return err
 			}
+		case sig := <-c.RequestPipe.GetSignal():
+			if sig == PIPE_DESTROY {
+				log.Printf("Req pipe destroyed")
+				return errors.New("pipe destroyed")
+			}
+		case <-ctx.Done():
+			log.Printf("Req: context done")
+			return nil
 		}
 	}
 }
 
-func (c *EventBus[Req, Res]) ListenResponsePipe(client string, f func(Res) error) error {
+func (c *EventBus[Req, Res]) ListenResponsePipe(ctx context.Context, client string, f func(Res) error) error {
 	if c.ResponsePipe == nil {
 		return errors.New("no response pipe available")
 	}
 	channel := c.ResponsePipe.Subscribe(client)
 	for {
 		select {
-		case event := <-channel:
-			if !event.ProtoReflect().IsValid() {
-				return errors.New("event is nil")
+		case event := <-channel: // might cause crash
+			// Don't know why I have to do this
+			if fmt.Sprintf("%v", event) == "<nil>" {
+				log.Printf("nil event in request pipe")
+				return errors.New("nil event in response pipe")
 			}
 			err := f(event)
 			if err != nil {
 				return err
 			}
+		case sig := <-c.ResponsePipe.GetSignal():
+			if sig == PIPE_DESTROY {
+				log.Printf("Res pipe destroyed")
+				return errors.New("pipe destroyed")
+			}
+		case <-ctx.Done():
+			log.Printf("Res: context done")
+			return nil
 		}
 	}
 }
@@ -101,10 +124,16 @@ func (c *EventBus[Req, Res]) PublishResponsePipe(event Res) error {
 }
 
 func (c *EventBus[Req, Res]) UnsubscribeRequestPipe(client string) {
+	if c.RequestPipe == nil {
+		return
+	}
 	c.RequestPipe.Unsubscribe(client)
 }
 
 func (c *EventBus[Req, Res]) UnsubscribeResponsePipe(client string) {
+	if c.ResponsePipe == nil {
+		return
+	}
 	c.ResponsePipe.Unsubscribe(client)
 }
 
@@ -117,11 +146,15 @@ func (c *EventBus[Req, Res]) Destroy() {
 	}
 }
 
+func (c *EventBus[Req, Res]) GetConfig() EventBusConfig {
+	return c.config
+}
+
 func NewEventBus[
 	Req protoreflect.ProtoMessage,
 	Res protoreflect.ProtoMessage,
-](config EventBusConfig) *EventBus[Req, Res] {
-	res := &EventBus[Req, Res]{}
+](config EventBusConfig) IEventBus[Req, Res] {
+	res := &EventBus[Req, Res]{} // Change to return a pointer to res
 	res.Init(config)
 	return res
 }

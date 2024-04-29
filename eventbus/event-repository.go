@@ -1,6 +1,7 @@
 package eventbus
 
 import (
+	"context"
 	"errors"
 	"log"
 
@@ -10,13 +11,13 @@ import (
 type IEventRepository[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage] interface {
 	EventRepositoryimpl()
 
-	CreateTopic(topic string, config EventBusConfig) (*EventBus[Req, Res], error)
-	GetTopic(topic string) (*EventBus[Req, Res], error)
+	CreateTopic(topic string, config EventBusConfig) (*IEventBus[protoreflect.ProtoMessage, protoreflect.ProtoMessage], error)
+	GetTopic(topic string) (*IEventBus[Req, Res], error)
 	DeleteTopic(topic string) error
 
 	Subscribe(topic string, client string) error
-	ListenRequest(topic string, client string, f func(Req) error) error
-	ListenResponse(topic string, client string, f func(Res) error) error
+	ListenRequest(ctx context.Context, topic string, client string, f func(Req) error) error
+	ListenResponse(ctx context.Context, topic string, client string, f func(Res) error) error
 
 	PublishRequest(topic string, event Req) error
 	PublishResponse(topic string, event Res) error
@@ -24,23 +25,23 @@ type IEventRepository[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessa
 }
 
 type EventRepository[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage] struct {
-	Topics map[string]*EventBus[Req, Res] // Change the type to IEventBus[Req, Res] instead of *IEventBus[Req, Res]
+	Topics map[string]*IEventBus[Req, Res] // Change the type to IEventBus[Req, Res] instead of *IEventBus[Req, Res]
 }
 
 func (r *EventRepository[Req, Res]) EventRepositoryimpl() {}
 
-func (r *EventRepository[Req, Res]) CreateTopic(topic string, config EventBusConfig) (*EventBus[Req, Res], error) {
+func (r *EventRepository[Req, Res]) CreateTopic(topic string, config EventBusConfig) (*IEventBus[Req, Res], error) {
+	log.Printf("creating topic %s", topic)
 	if r.Topics[topic] != nil {
 		return nil, errors.New("topic already exists")
 	}
 	bus := NewEventBus[Req, Res](config)
-	bus.Init(config)
-	r.Topics[topic] = bus
+	r.Topics[topic] = &bus
 	log.Printf("topic %s created at %v", topic, r.Topics[topic])
 	return r.Topics[topic], nil
 }
 
-func (r *EventRepository[Req, Res]) GetTopic(topic string) (*EventBus[Req, Res], error) {
+func (r *EventRepository[Req, Res]) GetTopic(topic string) (*IEventBus[Req, Res], error) {
 	if r.Topics[topic] == nil {
 		return nil, errors.New("topic not found")
 	}
@@ -66,18 +67,18 @@ func (r *EventRepository[Req, Res]) Subscribe(topic string, client string) error
 	return nil
 }
 
-func (r *EventRepository[Req, Res]) ListenRequest(topic string, client string, f func(Req) error) error {
+func (r *EventRepository[Req, Res]) ListenRequest(ctx context.Context, topic string, client string, f func(Req) error) error {
 	if r.Topics[topic] == nil {
 		return errors.New("topic not found when listening request")
 	}
-	return (*r.Topics[topic]).ListenRequestPipe(client, f)
+	return (*r.Topics[topic]).ListenRequestPipe(ctx, client, f)
 }
 
-func (r *EventRepository[Req, Res]) ListenResponse(topic string, client string, f func(Res) error) error {
+func (r *EventRepository[Req, Res]) ListenResponse(ctx context.Context, topic string, client string, f func(Res) error) error {
 	if r.Topics[topic] == nil {
 		return errors.New("topic not found when listening response")
 	}
-	return (*r.Topics[topic]).ListenResponsePipe(client, f)
+	return (*r.Topics[topic]).ListenResponsePipe(ctx, client, f)
 }
 
 func (r *EventRepository[Req, Res]) PublishRequest(topic string, event Req) error {
@@ -102,8 +103,8 @@ func (r *EventRepository[Req, Res]) Unsubscribe(topic string, client string) err
 	return nil
 }
 
-func NewEventRepository[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage](maxEvent int) IEventRepository[Req, Res] {
-	return &EventRepository[Req, Res]{
-		Topics: make(map[string]*EventBus[Req, Res], maxEvent),
+func NewEventRepository[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage](maxEvent int) IEventRepository[protoreflect.ProtoMessage, protoreflect.ProtoMessage] {
+	return &EventRepository[protoreflect.ProtoMessage, protoreflect.ProtoMessage]{
+		Topics: make(map[string]*IEventBus[protoreflect.ProtoMessage, protoreflect.ProtoMessage], maxEvent),
 	}
 }

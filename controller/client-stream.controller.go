@@ -94,7 +94,7 @@ func (f *ClientStreamFunctions[Req, Res]) HandleError(data Req, err error) error
 func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage](
 	stream ClientStream[Req, Res],
 	functions ClientStreamFunctions[Req, Res],
-	eventbus *eventbus.EventBus[Req, Res],
+	eventbus *eventbus.IEventBus[protoreflect.ProtoMessage, protoreflect.ProtoMessage],
 	option *FunctionOptions,
 ) (*Res, error) {
 	var chunkCount int32 = 0
@@ -185,7 +185,7 @@ Wrapper for stream functions
 func ClientStreamServer[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage](
 	stream ClientStream[Req, Res],
 	functions ClientStreamFunctions[Req, Res],
-	eventbus *eventbus.EventBus[Req, Res],
+	eventbus *eventbus.IEventBus[protoreflect.ProtoMessage, protoreflect.ProtoMessage],
 	option *FunctionOptions,
 ) error {
 	if functions.ConnectHandler != nil {

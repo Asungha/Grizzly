@@ -2,16 +2,16 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 
 	pb "github.com/Asungha/Grizzly/asset_stub"
 	"github.com/Asungha/Grizzly/eventbus"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	controller "github.com/Asungha/Grizzly/controller"
-
-	"github.com/google/uuid"
 )
 
 func SUpload(data *pb.ImageUploadRequest) error {
@@ -27,12 +27,13 @@ type AssetService struct {
 
 type ImageService struct {
 	pb.UnimplementedImageServiceServer
-	EventRepository *eventbus.IEventRepository[*pb.ImageUploadRequest, *pb.ImageUploadResponse]
+	EventRepository *eventbus.IEventRepository[protoreflect.ProtoMessage, protoreflect.ProtoMessage]
+	AssetService    *AssetService
 }
 
 type LogService struct {
 	pb.UnimplementedLogStreamServiceServer
-	EventRepository *eventbus.IEventRepository[*pb.ImageUploadRequest, *pb.ImageUploadResponse]
+	EventRepository *eventbus.IEventRepository[protoreflect.ProtoMessage, protoreflect.ProtoMessage]
 }
 
 // GRPC function impplementation example
@@ -43,7 +44,7 @@ func (s *AssetService) GetAsset(ctx context.Context, data *pb.GetAssetRequest) (
 	// What to do when there's a request from client
 	// Request data will be passed to the function anf response will be returned immediately
 	builder.OnData(func(ctx context.Context, gar *pb.GetAssetRequest) (*pb.GetAssetResponse, error) {
-		return &pb.GetAssetResponse{Asset: &pb.Asset{}}, nil
+		return &pb.GetAssetResponse{Asset: &pb.Asset{AssetDetail: &pb.AssetDetail{Area: 1.23}}}, nil
 	})
 
 	// This is a non-blocking function
@@ -59,10 +60,11 @@ func (s *ImageService) Upload(stream pb.ImageService_UploadServer) error {
 	// If eventbus is connfigured to allow response pipe subscription, then the response pipe will be created and can be used to broadcast the event.
 	// Same applies to request pipe subscription.
 	// Server function that use said eventbus will send data respectively to the eventbus config without manual configuration.
-	topicId := uuid.New().String()
+	// topicId := uuid.New().String()
+	topicId := "image_upload"
 	bus, _ := (*s.EventRepository).CreateTopic(
 		topicId,
-		eventbus.EventBusConfig{AllowRequestPipeSubscription: false, AllowResponsePipeSubscription: true},
+		eventbus.EventBusConfig{AllowRequestPipeSubscription: true, AllowResponsePipeSubscription: true},
 	)
 
 	// Create client stream builder
@@ -85,11 +87,18 @@ func (s *ImageService) Upload(stream pb.ImageService_UploadServer) error {
 	})
 	// What to do when client send all data. And signal the end of the stream.
 	builder.OnStreamEnd(func(iur *pb.ImageUploadRequest, i int) (*pb.ImageUploadResponse, error) {
-		return &pb.ImageUploadResponse{Url: "182736127864"}, nil
+		log.Printf("Stream ended")
+		asset, err := s.AssetService.GetAsset(context.Background(), &pb.GetAssetRequest{AssetId: "123456"})
+		if err != nil {
+			return nil, err
+		}
+		log.Printf("Asset: %v", asset)
+		return &pb.ImageUploadResponse{Url: fmt.Sprintf("%f", asset.Asset.AssetDetail.Area)}, nil
 	})
 	// What to do after the request is done
 	// Usually use for clean up session data or logging
 	builder.OnDone(func() error {
+		log.Printf("Delete topic: %v", topicId)
 		return (*s.EventRepository).DeleteTopic(topicId)
 	})
 	// What to do before return error
@@ -117,23 +126,6 @@ func (s *ImageService) Upload(stream pb.ImageService_UploadServer) error {
 // Listen to the event bus and send the data to the client
 // event is came from other process that publish the event to the event bus
 func (s *LogService) Listen(reqData *pb.LogRequest, stream pb.LogStreamService_ListenServer) error {
-	builder := controller.NewServerStreamBuilder[*pb.ImageUploadRequest, *pb.ImageUploadResponse, *pb.LogResponse]()
-	// What to do when there're request from client within image upload service
-	builder.OnReqData(func(iur *pb.ImageUploadRequest) (*pb.LogResponse, error) {
-		data := &pb.ImageUploadRequest{
-			ChunkId:  iur.ChunkId,
-			Filename: iur.Filename,
-			Length:   iur.Length,
-		}
-		result := &pb.LogResponse{Value: data.Filename}
-		return result, nil
-	})
-	// What to do when there're response from server within image upload service
-	builder.OnResData(func(iur *pb.ImageUploadResponse) (*pb.LogResponse, error) {
-		result := &pb.LogResponse{Value: "Stream ended"}
-		return result, nil
-	})
-
 	// Get topic bus that client needed
 	// Autehntication is highly recommended before allow client to listen to the topic
 	// Don't trust client input. Otherwise, it will be a huge security issue
@@ -143,13 +135,56 @@ func (s *LogService) Listen(reqData *pb.LogRequest, stream pb.LogStreamService_L
 		return err
 	}
 
+	// Defind the handler for the server stream
+
+	handler := controller.NewServerStreamHandler[*pb.ImageUploadRequest, *pb.ImageUploadResponse, *pb.LogResponse]()
+	// What to do when there're request from client within image upload service
+	handler.OnReqData(func(iur protoreflect.ProtoMessage) (protoreflect.ProtoMessage, error) {
+		// Always check the type of the data before using it
+		data := iur.(*pb.ImageUploadRequest)
+		result := &pb.LogResponse{Value: data.Filename}
+		return result, nil
+	})
+	// What to do when there're response from server within image upload service
+	handler.OnResData(func(iur protoreflect.ProtoMessage) (protoreflect.ProtoMessage, error) {
+		result := &pb.LogResponse{Value: "Stream ended"}
+		return result, nil
+	})
+
+	// Let's try using 2 handlers
+	handler2 := controller.NewServerStreamHandler[*pb.ImageUploadRequest, *pb.ImageUploadResponse, *pb.LogResponse]()
+	handler2.OnResData(func(iur protoreflect.ProtoMessage) (protoreflect.ProtoMessage, error) {
+		result := &pb.LogResponse{Value: "Stream ended from 2"}
+		return result, nil
+	})
+
+	// Create server stream specs
+	// Each spec will be use to create goroutine to handle stream concurrently
+	// You can have multiple spec to handle multiple event type in the same grpc request
+
+	// It's possible to share data between specs via channel. But watch out for deadlock.
+	// So, it's better to avoid sharing data between specs.
+
+	// Event bus of each specs didn't have to be the same.
+	// This allow you to have different event bus for different event. But using the same stream connection.
+	spec := controller.ServerStreamSpec[*pb.LogResponse]{}
+	spec.SetEventbus(bus)
+	spec.SetHandler(handler.Export()) // First handler here
+	spec.SetStream(&controller.ServerStreamWrapper[*pb.LogResponse]{Stream: stream})
+
+	spec2 := controller.ServerStreamSpec[*pb.LogResponse]{}
+	spec2.SetEventbus(bus)
+	spec2.SetHandler(handler2.Export()) // Another handler here
+	spec2.SetStream(&controller.ServerStreamWrapper[*pb.LogResponse]{Stream: stream})
+
 	// This will block the process until the stream is done
 	// Beware of usage
-	return controller.ServerStreamServer[*pb.ImageUploadRequest, *pb.ImageUploadResponse, *pb.LogResponse](
-		stream,
-		bus,
-		builder.Build(),
-	)
+	binder := controller.NewServerStreamBinder()
+
+	// Bind the spec to the binder
+	// both spec will be run concurrently. And send the data to the client via the same stream connection
+	binder.Bind(&spec).Bind(&spec2).Serve()
+	return nil
 }
 
 func main() {
@@ -165,14 +200,27 @@ func main() {
 	// But, it's not mandatory. You can use any type of data as you want.
 
 	// This event repository can be used by multiple services. Across difference process.
+	// In the future, This will be able to change transport to Redis or Kafka without changing the service code.
+	// To support distributed system.
 	e := eventbus.NewEventRepository[*pb.ImageUploadRequest, *pb.ImageUploadResponse](1024)
 
-	pb.RegisterAssetServiceServer(s, &AssetService{})
+	assetService := &AssetService{}
+
+	// To use other service within the service, you can pass the service as a parameter.
+	// Make sure it's a pointer
 
 	// When passing the event repository into the service, ONLY pass the pointer of the event repository.
 	// Otherwise, it will cause an event repository duplication and result in malfunction event bus.
-	pb.RegisterImageServiceServer(s, &ImageService{EventRepository: &e})
-	pb.RegisterLogStreamServiceServer(s, &LogService{EventRepository: &e})
+
+	// You can put grpc client in it if you want.
+	// This will allow you to call function from other server.
+	imageService := &ImageService{EventRepository: &e, AssetService: assetService}
+	logService := &LogService{EventRepository: &e}
+
+	// Register the service to the grpc server
+	pb.RegisterAssetServiceServer(s, assetService)
+	pb.RegisterImageServiceServer(s, imageService)
+	pb.RegisterLogStreamServiceServer(s, logService)
 
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)

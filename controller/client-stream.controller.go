@@ -183,6 +183,15 @@ func ClientStreamServer[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 	if err != nil {
 		return err
 	}
+	if option.outputValidation {
+		validator, err := protovalidate.New()
+		if err != nil {
+			return utils.InternalError(err)
+		}
+		if err := validator.Validate(res); err != nil {
+			return utils.DataLossError(err)
+		}
+	}
 	if err := stream.SendAndClose(res); err != nil {
 		return utils.ServiceError(err)
 	}

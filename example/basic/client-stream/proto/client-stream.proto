@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+// import "buf/validate/validate.proto";
+option go_package = "./";
+
+package unary;
+
+service ClientStreamService {
+    rpc ClientStreamCall(stream ClientStreamRequest) returns (ClientStreamResponse) {}
+}
+
+message ClientStreamRequest {
+    string message = 1;
+}
+
+message ClientStreamResponse {
+    string message = 1;
+}

@@ -2,3 +2,5 @@ test.go
 main.go
 asset_stub/
 tmp/
+example.go
+libs/

@@ -111,7 +111,7 @@ func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 			if err == io.EOF {
 				break
 			} else {
-				return utils.GetZero[Res](), functions.HandleError(buffer, err, utils.ServiceError(err))
+				return utils.GetZero[Res](), functions.HandleError(lastChunk, err, utils.ServiceError(err))
 			}
 		}
 

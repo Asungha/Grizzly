@@ -127,12 +127,7 @@ func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 
 		if option.inputValidation {
 			if err := validator.Validate(buffer); err != nil {
-				remainError := functions.HandleError(buffer, err)
-				if remainError != nil {
-					return utils.GetZero[Res](), utils.DataLossError(err)
-				} else {
-					return utils.GetZero[Res](), remainError
-				}
+				return utils.GetZero[Res](), utils.InvalidArgumentError(err)
 			}
 		}
 		if eventbus != nil {

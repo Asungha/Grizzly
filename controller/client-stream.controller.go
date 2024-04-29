@@ -135,12 +135,7 @@ func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 		}
 		err = functions.IngressHandler(buffer)
 		if err != nil {
-			remainError := functions.HandleError(buffer, err)
-			if remainError != nil {
-				return utils.GetZero[Res](), utils.ServiceError(err)
-			} else {
-				return utils.GetZero[Res](), remainError
-			}
+			return utils.GetZero[Res](), utils.ServiceError(err)
 		}
 	}
 
@@ -149,12 +144,7 @@ func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 	if functions.StreamEndHandler != nil {
 		postProcessRes, err := functions.StreamEndHandler(lastChunk, int(chunkCount))
 		if err != nil {
-			remainError := functions.HandleError(lastChunk, err)
-			if remainError != nil {
-				return utils.GetZero[Res](), utils.ServiceError(err)
-			} else {
-				return utils.GetZero[Res](), remainError
-			}
+			return utils.GetZero[Res](), utils.ServiceError(err)
 		}
 		res = postProcessRes
 		if eventbus != nil {

@@ -3,7 +3,6 @@ package eventbus
 import (
 	"context"
 	"errors"
-	"log"
 
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
@@ -31,13 +30,11 @@ type EventRepository[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessag
 func (r *EventRepository[Req, Res]) EventRepositoryimpl() {}
 
 func (r *EventRepository[Req, Res]) CreateTopic(topic string, config EventBusConfig) (*IEventBus[Req, Res], error) {
-	log.Printf("creating topic %s", topic)
 	if r.Topics[topic] != nil {
 		return nil, errors.New("topic already exists")
 	}
 	bus := NewEventBus[Req, Res](config)
 	r.Topics[topic] = &bus
-	log.Printf("topic %s created at %v", topic, r.Topics[topic])
 	return r.Topics[topic], nil
 }
 

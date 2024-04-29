@@ -224,7 +224,6 @@ func serverStreamHandler(binderWG *sync.WaitGroup, spec IServerStreamSpec) error
 	defer binderWG.Done()
 	bus := spec.Eventbus()
 	clientId := uuid.New().String()
-	log.Printf("Subscribing client %s", clientId)
 	functions := spec.Handler()
 	if functions.ConnectHandler() != nil {
 		err := functions.ConnectHandler()()

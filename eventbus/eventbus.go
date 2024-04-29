@@ -3,7 +3,6 @@ package eventbus
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"google.golang.org/protobuf/reflect/protoreflect"
 
@@ -28,14 +27,11 @@ type EventBus[
 func (c *EventBus[Req, Res]) ImplEventbus() {}
 
 func (c *EventBus[Req, Res]) Init(config EventBusConfig) {
-	log.Printf("config %v", config)
 	c.config = config
-	if config.AllowRequestPipeSubscription == true {
-		log.Printf("allowing request pipe subscription")
+	if config.AllowRequestPipeSubscription {
 		c.RequestPipe = NewInternalPipe[Req]()
 	}
-	if config.AllowResponsePipeSubscription == true {
-		log.Printf("allowing response pipe subscription")
+	if config.AllowResponsePipeSubscription {
 		c.ResponsePipe = NewInternalPipe[Res]()
 	}
 }
@@ -57,21 +53,17 @@ func (c *EventBus[Req, Res]) ListenRequestPipe(ctx context.Context, client strin
 		select {
 		case event := <-channel: // might cause crash
 			if fmt.Sprintf("%v", event) == "<nil>" {
-				log.Printf("nil event in request pipe")
 				return errors.New("nil event in response pipe")
 			}
 			err := f(event)
 			if err != nil {
-				log.Printf("error in request pipe: %v", err)
 				return err
 			}
 		case sig := <-c.RequestPipe.GetSignal():
 			if sig == PIPE_DESTROY {
-				log.Printf("Req pipe destroyed")
 				return errors.New("pipe destroyed")
 			}
 		case <-ctx.Done():
-			log.Printf("Req: context done")
 			return nil
 		}
 	}
@@ -87,7 +79,6 @@ func (c *EventBus[Req, Res]) ListenResponsePipe(ctx context.Context, client stri
 		case event := <-channel: // might cause crash
 			// Don't know why I have to do this
 			if fmt.Sprintf("%v", event) == "<nil>" {
-				log.Printf("nil event in request pipe")
 				return errors.New("nil event in response pipe")
 			}
 			err := f(event)
@@ -96,18 +87,15 @@ func (c *EventBus[Req, Res]) ListenResponsePipe(ctx context.Context, client stri
 			}
 		case sig := <-c.ResponsePipe.GetSignal():
 			if sig == PIPE_DESTROY {
-				log.Printf("Res pipe destroyed")
 				return errors.New("pipe destroyed")
 			}
 		case <-ctx.Done():
-			log.Printf("Res: context done")
 			return nil
 		}
 	}
 }
 
 func (c *EventBus[Req, Res]) PublishRequestPipe(event Req) error {
-	log.Printf("publishing request pipe %v", event)
 	if !c.config.AllowRequestPipeSubscription || c.RequestPipe == nil {
 		return errors.New("request pipe publishing is not allowed")
 	}

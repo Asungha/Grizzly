@@ -37,45 +37,45 @@ type ClientStreamFunctions[Req protoreflect.ProtoMessage, Res protoreflect.Proto
 	config eventbus.EventBusConfig
 }
 
-type ClientStreamBuilder[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage] struct {
+type ClientStreamHandler[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage] struct {
 	res ClientStreamFunctions[Req, Res]
 }
 
-func NewClientStreamBuilder[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage]() *ClientStreamBuilder[Req, Res] {
-	return &ClientStreamBuilder[Req, Res]{}
+func NewClientStreamHandler[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage]() *ClientStreamHandler[Req, Res] {
+	return &ClientStreamHandler[Req, Res]{}
 }
 
-func (b *ClientStreamBuilder[Req, Res]) OnConnect(f func() error) *ClientStreamBuilder[Req, Res] {
+func (b *ClientStreamHandler[Req, Res]) OnConnect(f func() error) *ClientStreamHandler[Req, Res] {
 	b.res.ConnectHandler = f
 	return b
 }
 
-func (b *ClientStreamBuilder[Req, Res]) OnData(f ClientStreamFunction[Req]) *ClientStreamBuilder[Req, Res] {
+func (b *ClientStreamHandler[Req, Res]) OnData(f ClientStreamFunction[Req]) *ClientStreamHandler[Req, Res] {
 	b.res.IngressHandler = f
 	return b
 }
 
-func (b *ClientStreamBuilder[Req, Res]) OnStreamEnd(f ClientStreamPostFunction[Req, Res]) *ClientStreamBuilder[Req, Res] {
+func (b *ClientStreamHandler[Req, Res]) OnStreamEnd(f ClientStreamPostFunction[Req, Res]) *ClientStreamHandler[Req, Res] {
 	b.res.StreamEndHandler = f
 	return b
 }
 
-func (b *ClientStreamBuilder[Req, Res]) OnDone(f func() error) *ClientStreamBuilder[Req, Res] {
+func (b *ClientStreamHandler[Req, Res]) OnDone(f func() error) *ClientStreamHandler[Req, Res] {
 	b.res.DoneHandler = f
 	return b
 }
 
-func (b *ClientStreamBuilder[Req, Res]) OnError(f ClientStreamErrorFunction[Req]) *ClientStreamBuilder[Req, Res] {
+func (b *ClientStreamHandler[Req, Res]) OnError(f ClientStreamErrorFunction[Req]) *ClientStreamHandler[Req, Res] {
 	b.res.ErrorHandler = f
 	return b
 }
 
-func (b *ClientStreamBuilder[Req, Res]) BeforeReturnError(f ClientStreamErrorInterceptorFunction[Req]) *ClientStreamBuilder[Req, Res] {
+func (b *ClientStreamHandler[Req, Res]) BeforeReturnError(f ClientStreamErrorInterceptorFunction[Req]) *ClientStreamHandler[Req, Res] {
 	b.res.ErrorInterceptor = f
 	return b
 }
 
-func (b *ClientStreamBuilder[Req, Res]) Build() ClientStreamFunctions[Req, Res] {
+func (b *ClientStreamHandler[Req, Res]) Export() ClientStreamFunctions[Req, Res] {
 	return b.res
 }
 

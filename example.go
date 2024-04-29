@@ -68,7 +68,7 @@ func (s *ImageService) Upload(stream pb.ImageService_UploadServer) error {
 	)
 
 	// Create client stream builder
-	builder := controller.NewClientStreamBuilder[*pb.ImageUploadRequest, *pb.ImageUploadResponse]()
+	builder := controller.NewClientStreamHandler[*pb.ImageUploadRequest, *pb.ImageUploadResponse]()
 	// What to do when client connect to the server
 	builder.OnConnect(func() error {
 		log.Printf("Create topic: %v", topicId)
@@ -116,7 +116,7 @@ func (s *ImageService) Upload(stream pb.ImageService_UploadServer) error {
 	// Beware of usage
 	return controller.ClientStreamServer[*pb.ImageUploadRequest, *pb.ImageUploadResponse](
 		stream,
-		builder.Build(),
+		builder.Export(),
 		bus, // Use nil if you don't want to broadcast the event
 		controller.FunctionOptionsBuilder().InputValidation(false).OutputValidation(false),
 	)

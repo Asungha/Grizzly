@@ -79,16 +79,14 @@ func (b *ClientStreamHandler[Req, Res]) Export() ClientStreamFunctions[Req, Res]
 	return b.res
 }
 
-func (f *ClientStreamFunctions[Req, Res]) HandleError(data Req, err error) error {
-	if err != nil {
-		if f.ErrorInterceptor != nil {
-			data, err = f.ErrorInterceptor(data, err)
-		}
-		if f.ErrorHandler != nil {
-			return f.ErrorHandler(data, err)
-		}
+func (f *ClientStreamFunctions[Req, Res]) HandleError(data Req, err error, defaultError error) error {
+	if f.ErrorInterceptor != nil {
+		data, err = f.ErrorInterceptor(data, err)
 	}
-	return nil
+	if f.ErrorHandler != nil {
+		return f.ErrorHandler(data, err)
+	}
+	return defaultError
 }
 
 func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage](
@@ -113,12 +111,7 @@ func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 			if err == io.EOF {
 				break
 			} else {
-				remainError := functions.HandleError(buffer, err)
-				if remainError == nil {
-					return utils.GetZero[Res](), utils.ServiceError(err)
-				} else {
-					return utils.GetZero[Res](), remainError
-				}
+				return utils.GetZero[Res](), functions.HandleError(buffer, err, utils.ServiceError(err))
 			}
 		}
 
@@ -127,7 +120,7 @@ func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 
 		if option.inputValidation {
 			if err := validator.Validate(buffer); err != nil {
-				return utils.GetZero[Res](), utils.InvalidArgumentError(err)
+				return utils.GetZero[Res](), functions.HandleError(buffer, err, utils.InvalidArgumentError(err))
 			}
 		}
 		if eventbus != nil {
@@ -135,7 +128,7 @@ func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 		}
 		err = functions.IngressHandler(buffer)
 		if err != nil {
-			return utils.GetZero[Res](), utils.ServiceError(err)
+			return utils.GetZero[Res](), functions.HandleError(buffer, err, utils.ServiceError(err))
 		}
 	}
 
@@ -153,8 +146,16 @@ func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 	} else {
 		return utils.GetZero[Res](), utils.InternalError(errors.New("no stream end handler"))
 	}
+	if option.outputValidation {
+		if err := validator.Validate(res); err != nil {
+			return utils.GetZero[Res](), utils.DataLossError(err)
+		}
+	}
 	if functions.DoneHandler != nil {
-		defer functions.DoneHandler()
+		err := functions.DoneHandler()
+		if err != nil {
+			return utils.GetZero[Res](), utils.ServiceError(err)
+		}
 	}
 	return res, nil
 }

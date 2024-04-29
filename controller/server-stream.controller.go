@@ -140,14 +140,15 @@ func handleServerStream(
 	var req func()
 	var res func()
 
-	if functions.ConnectHandler != nil && functions.ConnectHandler() != nil {
+	if functions.ConnectHandler() != nil {
 		err := functions.ConnectHandler()()
 		if err != nil {
+			defer cancle()
 			return utils.ServiceError(err)
 		}
 	}
 
-	if functions.PipeReqHandler != nil && functions.PipeReqHandler() != nil && (*eventbus).GetConfig().AllowRequestPipeSubscription {
+	if functions.PipeReqHandler() != nil && (*eventbus).GetConfig().AllowRequestPipeSubscription {
 		log.Println("PipeReqHandler is not nil")
 		req = func() {
 			defer wg.Done()
@@ -158,7 +159,7 @@ func handleServerStream(
 					cancle()
 					return err
 				}
-				if err := stream.Send(result.(protoreflect.ProtoMessage)); err != nil {
+				if err := stream.Send(result); err != nil {
 					errChan <- err
 					cancle()
 					return err
@@ -170,7 +171,7 @@ func handleServerStream(
 		}
 	}
 
-	if functions.PipeResHandler != nil && functions.PipeResHandler() != nil && (*eventbus).GetConfig().AllowResponsePipeSubscription {
+	if functions.PipeResHandler() != nil && (*eventbus).GetConfig().AllowResponsePipeSubscription {
 		log.Println("PipeResHandler is not nil")
 		res = func() {
 			defer wg.Done()
@@ -181,7 +182,7 @@ func handleServerStream(
 					cancle()
 					return err
 				}
-				if err := stream.Send(result.(protoreflect.ProtoMessage)); err != nil {
+				if err := stream.Send(result); err != nil {
 					errChan <- err
 					cancle()
 					return err
@@ -211,6 +212,7 @@ func handleServerStream(
 
 	select {
 	case <-done:
+		cancle()
 		return nil
 	case err := <-errChan:
 		cancle()
@@ -224,23 +226,18 @@ func serverStreamHandler(binderWG *sync.WaitGroup, spec IServerStreamSpec) error
 	clientId := uuid.New().String()
 	log.Printf("Subscribing client %s", clientId)
 	functions := spec.Handler()
-	if functions.ConnectHandler != nil && functions.ConnectHandler() != nil {
+	if functions.ConnectHandler() != nil {
 		err := functions.ConnectHandler()()
 		if err != nil {
 			return utils.ServiceError(err)
 		}
 	}
 	err := handleServerStream(spec.Stream(), bus, functions, &ServerStreamOptions{ClientId: clientId}) // Use the casted functions
-	log.Printf("Unsubscribing client %s", clientId)
 	(*bus).UnsubscribeRequestPipe(clientId)
 	(*bus).UnsubscribeResponsePipe(clientId)
-	log.Printf("Client %s unsubscribed", clientId)
 	if err != nil {
-		log.Printf("Server stream ended with error")
-		log.Printf(err.Error())
 		return err
 	}
-	log.Printf("Server stream ended successfully")
 	return status.Error(codes.Aborted, "Server stream ended")
 }
 

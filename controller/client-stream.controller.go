@@ -96,11 +96,11 @@ func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 	functions ClientStreamFunctions[Req, Res],
 	eventbus *eventbus.IEventBus[protoreflect.ProtoMessage, protoreflect.ProtoMessage],
 	option *FunctionOptions,
-) (*Res, error) {
+) (Res, error) {
 	var chunkCount int32 = 0
 	validator, err := protovalidate.New()
 	if err != nil {
-		return nil, utils.InternalError(err)
+		return utils.GetZero[Res](), utils.InternalError(err)
 	}
 	var lastChunk Req
 	if option == nil {
@@ -115,9 +115,9 @@ func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 			} else {
 				remainError := functions.HandleError(buffer, err)
 				if remainError == nil {
-					return nil, utils.ServiceError(err)
+					return utils.GetZero[Res](), utils.ServiceError(err)
 				} else {
-					return nil, remainError
+					return utils.GetZero[Res](), remainError
 				}
 			}
 		}
@@ -129,9 +129,9 @@ func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 			if err := validator.Validate(buffer); err != nil {
 				remainError := functions.HandleError(buffer, err)
 				if remainError != nil {
-					return nil, utils.DataLossError(err)
+					return utils.GetZero[Res](), utils.DataLossError(err)
 				} else {
-					return nil, remainError
+					return utils.GetZero[Res](), remainError
 				}
 			}
 		}
@@ -142,9 +142,9 @@ func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 		if err != nil {
 			remainError := functions.HandleError(buffer, err)
 			if remainError != nil {
-				return nil, utils.ServiceError(err)
+				return utils.GetZero[Res](), utils.ServiceError(err)
 			} else {
-				return nil, remainError
+				return utils.GetZero[Res](), remainError
 			}
 		}
 	}
@@ -156,9 +156,9 @@ func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 		if err != nil {
 			remainError := functions.HandleError(lastChunk, err)
 			if remainError != nil {
-				return nil, utils.ServiceError(err)
+				return utils.GetZero[Res](), utils.ServiceError(err)
 			} else {
-				return nil, remainError
+				return utils.GetZero[Res](), remainError
 			}
 		}
 		res = postProcessRes
@@ -166,12 +166,12 @@ func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 			(*eventbus).PublishResponsePipe(res)
 		}
 	} else {
-		return nil, utils.InternalError(errors.New("no stream end handler"))
+		return utils.GetZero[Res](), utils.InternalError(errors.New("no stream end handler"))
 	}
 	if functions.DoneHandler != nil {
 		defer functions.DoneHandler()
 	}
-	return &res, nil
+	return res, nil
 }
 
 /*
@@ -198,7 +198,7 @@ func ClientStreamServer[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 	if err != nil {
 		return err
 	}
-	if err := stream.SendAndClose(*res); err != nil {
+	if err := stream.SendAndClose(res); err != nil {
 		return utils.ServiceError(err)
 	}
 	return nil

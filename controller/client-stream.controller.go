@@ -10,7 +10,7 @@ import (
 
 	utils "github.com/Asungha/Grizzly/utils"
 
-	eventbus "github.com/Asungha/Grizzly/eventbus"
+	eventbroker "github.com/Asungha/Grizzly/eventbroker"
 )
 
 type ClientStreamFunction[V protoreflect.ProtoMessage] func(V) error
@@ -34,7 +34,7 @@ type ClientStreamFunctions[Req protoreflect.ProtoMessage, Res protoreflect.Proto
 	ErrorHandler     ClientStreamErrorFunction[Req]
 	ErrorInterceptor ClientStreamErrorInterceptorFunction[Req]
 
-	config eventbus.EventBusConfig
+	config eventbroker.EventBrokerConfig
 }
 
 type ClientStreamHandler[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage] struct {
@@ -92,7 +92,8 @@ func (f *ClientStreamFunctions[Req, Res]) HandleError(data Req, err error, defau
 func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage](
 	stream ClientStream[Req, Res],
 	functions ClientStreamFunctions[Req, Res],
-	eventbus *eventbus.IEventBus[protoreflect.ProtoMessage, protoreflect.ProtoMessage],
+	onReqBus *eventbroker.IEventBroker[Req],
+	onResBus *eventbroker.IEventBroker[Res],
 	option *FunctionOptions,
 ) (Res, error) {
 	var chunkCount int32 = 0
@@ -123,8 +124,8 @@ func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 				return utils.GetZero[Res](), functions.HandleError(buffer, err, utils.InvalidArgumentError(err))
 			}
 		}
-		if eventbus != nil {
-			(*eventbus).PublishRequestPipe(buffer)
+		if onReqBus != nil {
+			(*onReqBus).Publish(buffer)
 		}
 		err = functions.IngressHandler(buffer)
 		if err != nil {
@@ -140,8 +141,8 @@ func handleClientStream[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 			return utils.GetZero[Res](), utils.ServiceError(err)
 		}
 		res = postProcessRes
-		if eventbus != nil {
-			(*eventbus).PublishResponsePipe(res)
+		if onResBus != nil {
+			(*onResBus).Publish(res)
 		}
 	} else {
 		return utils.GetZero[Res](), utils.InternalError(errors.New("no stream end handler"))
@@ -171,7 +172,8 @@ Wrapper for stream functions
 func ClientStreamServer[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage](
 	stream ClientStream[Req, Res],
 	functions ClientStreamFunctions[Req, Res],
-	eventbus *eventbus.IEventBus[protoreflect.ProtoMessage, protoreflect.ProtoMessage],
+	onReqBus *eventbroker.IEventBroker[Req],
+	onResBus *eventbroker.IEventBroker[Res],
 	option *FunctionOptions,
 ) error {
 	if functions.ConnectHandler != nil {
@@ -180,7 +182,7 @@ func ClientStreamServer[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMes
 			return utils.ServiceError(err)
 		}
 	}
-	res, err := handleClientStream(stream, functions, eventbus, option)
+	res, err := handleClientStream(stream, functions, onReqBus, onResBus, option)
 	if err != nil {
 		return err
 	}

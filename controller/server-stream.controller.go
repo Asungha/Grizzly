@@ -2,10 +2,10 @@ package controller
 
 import (
 	"context"
-	"log"
+	"reflect"
 	"sync"
 
-	eventbus "github.com/Asungha/Grizzly/eventbus"
+	eventbroker "github.com/Asungha/Grizzly/eventbroker"
 	utils "github.com/Asungha/Grizzly/utils"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
@@ -16,51 +16,41 @@ import (
 
 type ServerStreamOptions struct {
 	ClientId string
+
+	// Set as true if you want to listen to the data without sending a strem response
+	SniffingOnly bool
 }
 
 type ServerStreamFunction[V protoreflect.ProtoMessage] func(V) error
 
-type ServerStreamOnReq[Req, Res protoreflect.ProtoMessage] func(Req) (Res, error)
+type ServerStreamOnData[Req, Res protoreflect.ProtoMessage] func(Req) (Res, error)
 
-type ServerStreamOnRes[Req, Res protoreflect.ProtoMessage] func(Req) (Res, error)
-
-type IServerStreamFunctions interface {
+type IServerStreamFunctions[I, O protoreflect.ProtoMessage] interface {
 	ConnectHandler() func() error
-	PipeReqHandler() ServerStreamOnReq[protoreflect.ProtoMessage, protoreflect.ProtoMessage]
-	PipeResHandler() ServerStreamOnRes[protoreflect.ProtoMessage, protoreflect.ProtoMessage]
+	DataHandler() ServerStreamOnData[I, O]
 
 	SetConnectHandler(func() error)
-	SetPipeReqHandler(ServerStreamOnReq[protoreflect.ProtoMessage, protoreflect.ProtoMessage])
-	SetPipeResHandler(ServerStreamOnRes[protoreflect.ProtoMessage, protoreflect.ProtoMessage])
+	SetDataHandler(ServerStreamOnData[I, O])
 }
-type ServerStreamFunctions[PipeReq, PipeRes, StreamRes protoreflect.ProtoMessage] struct {
+type ServerStreamFunctions[I, O protoreflect.ProtoMessage] struct {
 	connectHandler func() error
-	pipeReqHandler ServerStreamOnReq[protoreflect.ProtoMessage, protoreflect.ProtoMessage]
-	pipeResHandler ServerStreamOnRes[protoreflect.ProtoMessage, protoreflect.ProtoMessage]
+	dataHandler    ServerStreamOnData[I, O]
 }
 
-func (f ServerStreamFunctions[PipeReq, PipeRes, StreamRes]) ConnectHandler() func() error {
+func (f ServerStreamFunctions[I, O]) ConnectHandler() func() error {
 	return f.connectHandler
 }
 
-func (f ServerStreamFunctions[PipeReq, PipeRes, StreamRes]) PipeReqHandler() ServerStreamOnReq[protoreflect.ProtoMessage, protoreflect.ProtoMessage] {
-	return f.pipeReqHandler
+func (f ServerStreamFunctions[I, O]) DataHandler() ServerStreamOnData[I, O] {
+	return f.dataHandler
 }
 
-func (f ServerStreamFunctions[PipeReq, PipeRes, StreamRes]) PipeResHandler() ServerStreamOnRes[protoreflect.ProtoMessage, protoreflect.ProtoMessage] {
-	return f.pipeResHandler
-}
-
-func (f *ServerStreamFunctions[PipeReq, PipeRes, StreamRes]) SetConnectHandler(connectHandler func() error) {
+func (f *ServerStreamFunctions[I, O]) SetConnectHandler(connectHandler func() error) {
 	f.connectHandler = connectHandler
 }
 
-func (f *ServerStreamFunctions[PipeReq, PipeRes, StreamRes]) SetPipeReqHandler(pipeReqHandler ServerStreamOnReq[protoreflect.ProtoMessage, protoreflect.ProtoMessage]) {
-	f.pipeReqHandler = pipeReqHandler
-}
-
-func (f *ServerStreamFunctions[PipeReq, PipeRes, StreamRes]) SetPipeResHandler(pipeResHandler ServerStreamOnRes[protoreflect.ProtoMessage, protoreflect.ProtoMessage]) {
-	f.pipeResHandler = pipeResHandler
+func (f *ServerStreamFunctions[I, O]) SetDataHandler(dataHandler ServerStreamOnData[I, O]) {
+	f.dataHandler = dataHandler
 }
 
 type ServerStream interface {
@@ -81,163 +71,94 @@ type ServerStreamWrapper[Res protoreflect.ProtoMessage] struct {
 func (s *ServerStreamWrapper[Res]) Send(res protoreflect.ProtoMessage) error {
 	// Check if the type of res is the same as the type of Stream
 	if _, ok := res.(Res); !ok {
-		log.Printf("Invalid argument")
 		return status.Error(codes.InvalidArgument, "Invalid argument")
 	}
 	return (s.Stream).Send(res.(Res))
 }
 
-type ServerStreamHandler[
-	PipeReq protoreflect.ProtoMessage,
-	PipeRes protoreflect.ProtoMessage,
-	StreamRes protoreflect.ProtoMessage,
-] struct {
-	res IServerStreamFunctions
-}
+// type ServerStreamHandler[
+// 	StreamCap protoreflect.ProtoMessage,
+// 	StreamRes protoreflect.ProtoMessage,
+// ] struct {
+// 	res IServerStreamFunctions[StreamCap, StreamRes]
+// }
 
-func (b *ServerStreamHandler[PipeReq, PipeRes, StreamRes]) OnConnect(f func() error) *ServerStreamHandler[PipeReq, PipeRes, StreamRes] {
-	b.res.SetConnectHandler(f)
-	return b
-}
+// func (b *ServerStreamHandler[StreamCap, StreamRes]) OnConnect(f func() error) *ServerStreamHandler[StreamCap, StreamRes] {
+// 	b.res.SetConnectHandler(f)
+// 	return b
+// }
 
-func (b *ServerStreamHandler[PipeReq, PipeRes, StreamRes]) OnReqData(f ServerStreamOnReq[protoreflect.ProtoMessage, protoreflect.ProtoMessage]) *ServerStreamHandler[PipeReq, PipeRes, StreamRes] {
-	b.res.SetPipeReqHandler(f)
-	return b
-}
+// func (b *ServerStreamHandler[StreamCap, StreamRes]) OnData(f ServerStreamOnData[StreamCap, StreamRes]) *ServerStreamHandler[StreamCap, StreamRes] {
+// 	if casted, ok := f.(ServerStreamOnData[protoreflect.ProtoMessage, protoreflect.ProtoMessage]); !ok {
+// 		log.Printf("Invalid argument")
+// 		return b
+// 	} else {
+// 		b.res.SetDataHandler(casted)
+// 	}
+// }
 
-func (b *ServerStreamHandler[PipeReq, PipeRes, StreamRes]) OnResData(f ServerStreamOnRes[protoreflect.ProtoMessage, protoreflect.ProtoMessage]) *ServerStreamHandler[PipeReq, PipeRes, StreamRes] {
-	b.res.SetPipeResHandler(f)
-	return b
-}
-
-func (b *ServerStreamHandler[PipeReq, PipeRes, StreamRes]) Export() IServerStreamFunctions {
-	return b.res
-}
+// func (b *ServerStreamHandler[StreamCap, StreamRes]) Export() IServerStreamFunctions[StreamCap, StreamRes] {
+// 	return b.res
+// }
 
 func NewServerStreamHandler[
-	PipeReq protoreflect.ProtoMessage,
-	PipeRes protoreflect.ProtoMessage,
+	StreamCap protoreflect.ProtoMessage,
 	StreamRes protoreflect.ProtoMessage,
-]() *ServerStreamHandler[PipeReq, PipeRes, StreamRes] {
-	return &ServerStreamHandler[PipeReq, PipeRes, StreamRes]{res: &ServerStreamFunctions[PipeReq, PipeRes, StreamRes]{}}
+]() IServerStreamFunctions[StreamCap, StreamRes] {
+	return &ServerStreamFunctions[StreamCap, StreamRes]{}
 }
 
 // func NewClientStreamBuilder[Req protoreflect.ProtoMessage, Res protoreflect.ProtoMessage]() *ClientStreamBuilder[Req, Res] {
 // 	return &ClientStreamBuilder[Req, Res]{}
 // }
 
-func handleServerStream(
+func handleServerStream[
+	StreamCap protoreflect.ProtoMessage,
+	StreamRes protoreflect.ProtoMessage,
+](
+	ctx context.Context,
 	stream ServerStream,
-	eventbus *eventbus.IEventBus[protoreflect.ProtoMessage, protoreflect.ProtoMessage],
-	functions IServerStreamFunctions,
+	broker eventbroker.IEventBroker[StreamCap],
+	functions IServerStreamFunctions[StreamCap, StreamRes],
 	option *ServerStreamOptions,
 ) error {
-	var wg *sync.WaitGroup = &sync.WaitGroup{}
-	ctx, cancle := context.WithCancel(context.Background())
-
-	errChan := make(chan error, 1)
-
-	var req func()
-	var res func()
-
-	if functions.ConnectHandler() != nil {
-		err := functions.ConnectHandler()()
-		if err != nil {
-			defer cancle()
-			return utils.ServiceError(err)
-		}
-	}
-
-	if functions.PipeReqHandler() != nil && (*eventbus).GetConfig().AllowRequestPipeSubscription {
-		log.Println("PipeReqHandler is not nil")
-		req = func() {
-			defer wg.Done()
-			(*eventbus).ListenRequestPipe(ctx, option.ClientId, func(iur protoreflect.ProtoMessage) error {
-				result, err := functions.PipeReqHandler()(iur)
-				if err != nil {
-					errChan <- err
-					cancle()
-					return err
-				}
-				if err := stream.Send(result); err != nil {
-					errChan <- err
-					cancle()
-					return err
-				}
-				return nil
-			})
-			cancle()
-			log.Printf("Stop listening request pipe")
-		}
-	}
-
-	if functions.PipeResHandler() != nil && (*eventbus).GetConfig().AllowResponsePipeSubscription {
-		log.Println("PipeResHandler is not nil")
-		res = func() {
-			defer wg.Done()
-			(*eventbus).ListenResponsePipe(ctx, option.ClientId, func(iur protoreflect.ProtoMessage) error {
-				result, err := functions.PipeResHandler()(iur)
-				if err != nil {
-					errChan <- err
-					cancle()
-					return err
-				}
-				if err := stream.Send(result); err != nil {
-					errChan <- err
-					cancle()
-					return err
-				}
-				return nil
-			})
-			log.Printf("Stop listening response pipe")
-			cancle()
-		}
-	}
-
-	if req != nil {
-		wg.Add(1)
-		go req()
-	}
-	if res != nil {
-		wg.Add(1)
-		go res()
-	}
-
-	done := make(chan bool)
-
-	go func() {
-		wg.Wait()
-		done <- true
-	}()
-
-	select {
-	case <-done:
-		cancle()
-		return nil
-	case err := <-errChan:
-		cancle()
-		return err
-	}
-}
-
-func serverStreamHandler(binderWG *sync.WaitGroup, spec IServerStreamSpec) error {
-	defer binderWG.Done()
-	bus := spec.Eventbus()
-	clientId := uuid.New().String()
-	functions := spec.Handler()
 	if functions.ConnectHandler() != nil {
 		err := functions.ConnectHandler()()
 		if err != nil {
 			return utils.ServiceError(err)
 		}
 	}
-	err := handleServerStream(spec.Stream(), bus, functions, &ServerStreamOptions{ClientId: clientId}) // Use the casted functions
-	(*bus).UnsubscribeRequestPipe(clientId)
-	(*bus).UnsubscribeResponsePipe(clientId)
-	if err != nil {
-		return err
+
+	var b *eventbroker.EventBroker[StreamCap]
+
+	if v, ok := broker.(*eventbroker.EventBroker[StreamCap]); !ok || v == nil {
+		return status.Error(codes.InvalidArgument, "No event broker")
+	} else {
+		b = v
 	}
-	return status.Error(codes.Aborted, "Server stream ended")
+
+	if functions.DataHandler() != nil {
+		err := b.Listen(ctx, option.ClientId, func(iur StreamCap) error {
+			result, resErr := functions.DataHandler()(iur)
+			if reflect.ValueOf(result).IsZero() {
+				if resErr != nil {
+					return resErr
+				}
+				return nil
+			}
+			if err := stream.Send(result); err != nil {
+				return err
+			}
+			if resErr != nil {
+				return resErr
+			}
+			return nil
+		})
+		if err != nil {
+			return utils.ServiceError(err)
+		}
+	}
+	return nil
 }
 
 // func BindServerStream[
@@ -245,71 +166,134 @@ func serverStreamHandler(binderWG *sync.WaitGroup, spec IServerStreamSpec) error
 // 	PipeRes protoreflect.ProtoMessage,
 // 	StreamRes protoreflect.ProtoMessage,
 // ](
-// 	spec ServerStreamSpec[PipeReq, PipeRes, StreamRes],
+// 	spec ServerStreamTask[PipeReq, PipeRes, StreamRes],
 // ) error {
 // 	return serverStreamHandler(spec)
 // }
 
-type IServerStreamSpec interface {
-	IServerStreamSpecImpl()
+type IServerStreamTask[StreamCap, StreamRes protoreflect.ProtoMessage] interface {
+	IServerStreamTaskImpl()
 
-	Handler() IServerStreamFunctions
-	Eventbus() *eventbus.IEventBus[protoreflect.ProtoMessage, protoreflect.ProtoMessage]
+	Handler() IServerStreamFunctions[StreamCap, StreamRes]
+	EventBroker() eventbroker.IEventBroker[StreamCap]
 	Stream() ServerStream
 
-	SetHandler(IServerStreamFunctions)
-	SetEventbus(*eventbus.IEventBus[protoreflect.ProtoMessage, protoreflect.ProtoMessage])
-	SetStream(ServerStream)
+	OnlySniffing()
+	IsOnlySniffing() bool
+
+	SetHandler(IServerStreamFunctions[StreamCap, StreamRes])
+	Seteventbroker(eventbroker.IEventBroker[StreamCap])
+	// SetStream(ServerStream)
 }
 
-type ServerStreamSpec[
+type ServerStreamTask[
+	StreamCap protoreflect.ProtoMessage,
 	StreamRes protoreflect.ProtoMessage,
 ] struct {
-	stream    ServerStream
-	eventbus  *eventbus.IEventBus[protoreflect.ProtoMessage, protoreflect.ProtoMessage]
-	functions IServerStreamFunctions
+	stream      ServerStream
+	eventbroker eventbroker.IEventBroker[StreamCap]
+	functions   IServerStreamFunctions[StreamCap, StreamRes]
+
+	onlySniffing bool
 }
 
-func (s *ServerStreamSpec[StreamRes]) IServerStreamSpecImpl() {}
+func (s *ServerStreamTask[StreamCap, StreamRes]) IServerStreamTaskImpl() {}
 
-func (s *ServerStreamSpec[StreamRes]) Handler() IServerStreamFunctions {
+func (s *ServerStreamTask[StreamCap, StreamRes]) Handler() IServerStreamFunctions[StreamCap, StreamRes] {
 	return s.functions
 }
 
-func (s *ServerStreamSpec[StreamRes]) Eventbus() *eventbus.IEventBus[protoreflect.ProtoMessage, protoreflect.ProtoMessage] {
-	return s.eventbus
+func (s *ServerStreamTask[StreamCap, StreamRes]) EventBroker() eventbroker.IEventBroker[StreamCap] {
+	return s.eventbroker
 }
 
-func (s *ServerStreamSpec[StreamRes]) Stream() ServerStream {
+func (s *ServerStreamTask[StreamCap, StreamRes]) Stream() ServerStream {
 	return s.stream
 }
 
-func (s *ServerStreamSpec[StreamRes]) SetHandler(functions IServerStreamFunctions) {
+func (s *ServerStreamTask[StreamCap, StreamRes]) SetHandler(functions IServerStreamFunctions[StreamCap, StreamRes]) {
 	s.functions = functions
 }
 
-func (s *ServerStreamSpec[StreamRes]) SetEventbus(eventbus *eventbus.IEventBus[protoreflect.ProtoMessage, protoreflect.ProtoMessage]) {
-	s.eventbus = eventbus
+func (s *ServerStreamTask[StreamCap, StreamRes]) Seteventbroker(eventbroker eventbroker.IEventBroker[StreamCap]) {
+	s.eventbroker = eventbroker
 }
 
-func (s *ServerStreamSpec[StreamRes]) SetStream(stream ServerStream) {
-	s.stream = stream
+func (s *ServerStreamTask[StreamCap, StreamRes]) OnlySniffing() {
+	s.onlySniffing = true
+}
+
+func (s *ServerStreamTask[StreamCap, StreamRes]) IsOnlySniffing() bool {
+	return s.onlySniffing
+}
+
+// func (s *ServerStreamTask[StreamCap, StreamRes]) SetStream(stream ServerStream) {
+// 	s.stream = stream
+// }
+
+type BindingOption struct {
+	OnlySniffing bool
 }
 
 type ServerStreamBinder struct {
-	wg sync.WaitGroup
+	wg     *sync.WaitGroup
+	stream ServerStream
+	Funcs  []func(*ServerStreamBinder, context.Context)
+	errs   chan error
 }
 
-func NewServerStreamBinder() *ServerStreamBinder {
-	return &ServerStreamBinder{wg: sync.WaitGroup{}}
+func NewServerStreamBinder(stream ServerStream) *ServerStreamBinder {
+	return &ServerStreamBinder{wg: &sync.WaitGroup{}, stream: stream, errs: make(chan error)}
 }
 
-func (b *ServerStreamBinder) Bind(spec IServerStreamSpec) *ServerStreamBinder {
-	b.wg.Add(1)
-	go serverStreamHandler(&b.wg, spec)
-	return b
+func Bind[StreamCap, StreamRes protoreflect.ProtoMessage](binder *ServerStreamBinder, task IServerStreamTask[StreamCap, StreamRes]) {
+	t := ServerStreamTask[StreamCap, StreamRes]{
+		eventbroker:  task.EventBroker(),
+		functions:    task.Handler(),
+		stream:       binder.stream,
+		onlySniffing: task.IsOnlySniffing(),
+	}
+	binder.Funcs = append(binder.Funcs, func(b *ServerStreamBinder, ctx context.Context) {
+		// err := serverStreamHandler[StreamCap, StreamRes](ctx, binder.wg, &t)
+		// if err != nil {
+		//	binder.errs <- err
+		//	log.Printf("task Error %v", err)
+		// }
+		defer b.wg.Done()
+		bus := t.EventBroker()
+		clientId := uuid.New().String()
+		functions := t.Handler()
+
+		opts := &ServerStreamOptions{ClientId: clientId, SniffingOnly: false}
+
+		err := handleServerStream(ctx, t.Stream(), bus, functions, opts) // Use the casted functions
+		bus.Unsubscribe(clientId)
+		bus.Unsubscribe(clientId)
+		if err != nil {
+			b.errs <- err
+		}
+	})
 }
 
-func (b *ServerStreamBinder) Serve() {
-	b.wg.Wait()
+func (b *ServerStreamBinder) Serve() error {
+	var done chan bool = make(chan bool)
+	ctx, cancle := context.WithCancel(context.Background())
+	for _, f := range b.Funcs {
+		b.wg.Add(1)
+		go f(b, ctx)
+	}
+	go func() {
+		b.wg.Wait()
+		done <- true
+	}()
+
+	// Wait for either an error or the stream to end
+	select {
+	case err := <-b.errs:
+		cancle()
+		return err
+	case <-done:
+		cancle()
+		return status.Error(codes.OK, "Server stream ended successfully")
+	}
 }

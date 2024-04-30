@@ -49,6 +49,7 @@ func (c *ClientStreamController) ClientStreamCall(stream pb.ClientStreamService_
 		stream,
 		handler.Export(),
 		nil,
+		nil,
 		controller.FunctionOptionsBuilder().InputValidation(false).OutputValidation(false),
 	)
 

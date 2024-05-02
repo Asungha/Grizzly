@@ -178,9 +178,6 @@ type IServerStreamTask[StreamCap, StreamRes protoreflect.ProtoMessage] interface
 	EventBroker() eventbroker.IEventBroker[StreamCap]
 	Stream() ServerStream
 
-	OnlySniffing()
-	IsOnlySniffing() bool
-
 	SetHandler(IServerStreamFunctions[StreamCap, StreamRes])
 	Seteventbroker(eventbroker.IEventBroker[StreamCap])
 	// SetStream(ServerStream)
@@ -193,8 +190,6 @@ type ServerStreamTask[
 	stream      ServerStream
 	eventbroker eventbroker.IEventBroker[StreamCap]
 	functions   IServerStreamFunctions[StreamCap, StreamRes]
-
-	onlySniffing bool
 }
 
 func (s *ServerStreamTask[StreamCap, StreamRes]) IServerStreamTaskImpl() {}
@@ -219,14 +214,6 @@ func (s *ServerStreamTask[StreamCap, StreamRes]) Seteventbroker(eventbroker even
 	s.eventbroker = eventbroker
 }
 
-func (s *ServerStreamTask[StreamCap, StreamRes]) OnlySniffing() {
-	s.onlySniffing = true
-}
-
-func (s *ServerStreamTask[StreamCap, StreamRes]) IsOnlySniffing() bool {
-	return s.onlySniffing
-}
-
 // func (s *ServerStreamTask[StreamCap, StreamRes]) SetStream(stream ServerStream) {
 // 	s.stream = stream
 // }
@@ -248,10 +235,9 @@ func NewServerStreamBinder(stream ServerStream) *ServerStreamBinder {
 
 func Bind[StreamCap, StreamRes protoreflect.ProtoMessage](binder *ServerStreamBinder, task IServerStreamTask[StreamCap, StreamRes]) {
 	t := ServerStreamTask[StreamCap, StreamRes]{
-		eventbroker:  task.EventBroker(),
-		functions:    task.Handler(),
-		stream:       binder.stream,
-		onlySniffing: task.IsOnlySniffing(),
+		eventbroker: task.EventBroker(),
+		functions:   task.Handler(),
+		stream:      binder.stream,
 	}
 	binder.Funcs = append(binder.Funcs, func(b *ServerStreamBinder, ctx context.Context) {
 		// err := serverStreamHandler[StreamCap, StreamRes](ctx, binder.wg, &t)

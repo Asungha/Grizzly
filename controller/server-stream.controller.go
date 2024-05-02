@@ -118,7 +118,7 @@ func handleServerStream[
 ](
 	ctx context.Context,
 	stream ServerStream,
-	broker eventbroker.IEventBroker[StreamCap],
+	broker *eventbroker.IEventBroker[StreamCap],
 	functions IServerStreamFunctions[StreamCap, StreamRes],
 	option *ServerStreamOptions,
 ) error {
@@ -131,7 +131,7 @@ func handleServerStream[
 
 	var b *eventbroker.EventBroker[StreamCap]
 
-	if v, ok := broker.(*eventbroker.EventBroker[StreamCap]); !ok || v == nil {
+	if v, ok := (*broker).(*eventbroker.EventBroker[StreamCap]); !ok || v == nil {
 		return status.Error(codes.InvalidArgument, "No event broker")
 	} else {
 		b = v
@@ -175,11 +175,11 @@ type IServerStreamTask[StreamCap, StreamRes protoreflect.ProtoMessage] interface
 	IServerStreamTaskImpl()
 
 	Handler() IServerStreamFunctions[StreamCap, StreamRes]
-	EventBroker() eventbroker.IEventBroker[StreamCap]
+	EventBroker() *eventbroker.IEventBroker[StreamCap]
 	Stream() ServerStream
 
 	SetHandler(IServerStreamFunctions[StreamCap, StreamRes])
-	Seteventbroker(eventbroker.IEventBroker[StreamCap])
+	Seteventbroker(*eventbroker.IEventBroker[StreamCap])
 	// SetStream(ServerStream)
 }
 
@@ -188,7 +188,7 @@ type ServerStreamTask[
 	StreamRes protoreflect.ProtoMessage,
 ] struct {
 	stream      ServerStream
-	eventbroker eventbroker.IEventBroker[StreamCap]
+	eventbroker *eventbroker.IEventBroker[StreamCap]
 	functions   IServerStreamFunctions[StreamCap, StreamRes]
 }
 
@@ -198,7 +198,7 @@ func (s *ServerStreamTask[StreamCap, StreamRes]) Handler() IServerStreamFunction
 	return s.functions
 }
 
-func (s *ServerStreamTask[StreamCap, StreamRes]) EventBroker() eventbroker.IEventBroker[StreamCap] {
+func (s *ServerStreamTask[StreamCap, StreamRes]) EventBroker() *eventbroker.IEventBroker[StreamCap] {
 	return s.eventbroker
 }
 
@@ -210,7 +210,7 @@ func (s *ServerStreamTask[StreamCap, StreamRes]) SetHandler(functions IServerStr
 	s.functions = functions
 }
 
-func (s *ServerStreamTask[StreamCap, StreamRes]) Seteventbroker(eventbroker eventbroker.IEventBroker[StreamCap]) {
+func (s *ServerStreamTask[StreamCap, StreamRes]) Seteventbroker(eventbroker *eventbroker.IEventBroker[StreamCap]) {
 	s.eventbroker = eventbroker
 }
 
@@ -253,8 +253,8 @@ func Bind[StreamCap, StreamRes protoreflect.ProtoMessage](binder *ServerStreamBi
 		opts := &ServerStreamOptions{ClientId: clientId, SniffingOnly: false}
 
 		err := handleServerStream(ctx, t.Stream(), bus, functions, opts) // Use the casted functions
-		bus.Unsubscribe(clientId)
-		bus.Unsubscribe(clientId)
+		(*bus).Unsubscribe(clientId)
+		(*bus).Unsubscribe(clientId)
 		if err != nil {
 			b.errs <- err
 		}

@@ -16,10 +16,10 @@ type ServerStreamController struct {
 	service *serverStreamService.ServerStreamService
 
 	// You might have multiple event brokers in your application for different event sources.
-	EventBroker eventbroker.IEventBroker[*pb.Data]
+	EventBroker *eventbroker.IEventBroker[*pb.Data]
 }
 
-func NewServerStreamController(eventBroker eventbroker.IEventBroker[*pb.Data]) *ServerStreamController {
+func NewServerStreamController(eventBroker *eventbroker.IEventBroker[*pb.Data]) *ServerStreamController {
 	return &ServerStreamController{service: serverStreamService.NewServerStreamService(), EventBroker: eventBroker}
 }
 

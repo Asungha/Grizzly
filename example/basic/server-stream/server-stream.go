@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"time"
@@ -12,15 +13,15 @@ import (
 	pb "github.com/Asungha/Grizzly/example/basic/server-stream/stub"
 )
 
-func sendData(interval int, broker eventbroker.IEventBroker[*pb.Data]) {
+func sendData(interval int, broker *eventbroker.IEventBroker[*pb.Data]) {
 	for {
-		data := &pb.Data{Data: "This data sent every " + string(interval) + " seconds"}
-		err := broker.Publish(data)
+		data := &pb.Data{Data: fmt.Sprintf("This data sent every %d second", interval)}
+		err := (*broker).Publish(data)
 		if err != nil {
 			log.Println("Error publishing data: ", err)
 			continue
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(time.Duration(interval) * time.Second)
 	}
 }
 
@@ -37,14 +38,14 @@ func main() {
 	// Data flowing in the broker is required to be a protobuf message.
 	broker := eventbroker.NewEventBroker[*pb.Data]()
 
-	c := controller.NewServerStreamController(broker)
+	c := controller.NewServerStreamController(&broker)
 
 	pb.RegisterServerStreamServiceServer(s, c)
 
 	// Let's try to produce some data from multiple threads.
 	// Usually, this data can be produced from different services.
-	go sendData(1, broker)
-	go sendData(5, broker)
+	go sendData(1, &broker)
+	go sendData(5, &broker)
 
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)

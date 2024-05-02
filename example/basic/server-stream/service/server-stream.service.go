@@ -18,5 +18,5 @@ func NewServerStreamService() *ServerStreamService {
 
 func (s *ServerStreamService) ServerStreamCall(ctx context.Context, req *pb.Data) (*pb.ServerStreamResponse, error) {
 	data := s.database.GetData()
-	return &pb.ServerStreamResponse{Message: data}, nil
+	return &pb.ServerStreamResponse{Message: req.Data, Data: data}, nil
 }

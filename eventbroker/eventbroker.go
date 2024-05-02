@@ -3,6 +3,7 @@ package eventbroker
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -22,6 +23,8 @@ type EventBroker[
 	Data protoreflect.ProtoMessage,
 ] struct {
 	channels map[string]chan Data
+	unsub    map[string]bool
+	unsubMux sync.Mutex
 }
 
 func (c *EventBroker[Data]) ImplEventBroker() {}
@@ -78,13 +81,25 @@ func (c *EventBroker[Data]) Publish(event Data) error {
 	if c == nil {
 		return errors.New("no channels available")
 	}
-	for _, channels := range c.channels {
-		channels <- event
+	for client, channels := range c.channels {
+		//check if channel is closed
+		c.unsubMux.Lock()
+		if isDeleted, ok := c.unsub[client]; ok && isDeleted {
+			close(channels)
+			delete(c.channels, client)
+			c.unsubMux.Unlock()
+			continue
+		} else {
+			channels <- event
+		}
+		c.unsubMux.Unlock()
 	}
 	return nil
 }
 
 func (c *EventBroker[Data]) Unsubscribe(client string) {
+	c.unsubMux.Lock()
+	defer c.unsubMux.Unlock()
 	if c == nil {
 		return
 	}
@@ -94,8 +109,9 @@ func (c *EventBroker[Data]) Unsubscribe(client string) {
 	if c.channels[client] == nil {
 		return
 	}
-	close(c.channels[client])
-	delete(c.channels, client)
+	// c.channels[client] = nil
+	c.unsub[client] = true
+
 }
 
 func (c *EventBroker[Data]) Destroy() {
@@ -118,6 +134,8 @@ func NewEventBroker[
 ]() IEventBroker[Data] {
 	res := &EventBroker[Data]{
 		channels: make(map[string]chan Data),
+		unsub:    make(map[string]bool),
+		unsubMux: sync.Mutex{},
 	}
 	return res
 }

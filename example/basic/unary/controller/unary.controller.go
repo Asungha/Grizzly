@@ -16,6 +16,6 @@ func NewUnaryController() *UnaryController {
 	return &UnaryController{service: unaryService.NewUnaryService()}
 }
 
-func (c *UnaryController) Unary(ctx context.Context, req *pb.UnaryRequest) (*pb.UnaryResponse, error) {
+func (c *UnaryController) UnaryCall(ctx context.Context, req *pb.UnaryRequest) (*pb.UnaryResponse, error) {
 	return c.service.Unary(ctx, req)
 }
